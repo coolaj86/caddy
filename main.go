@@ -1,86 +1,95 @@
 package main
 
 import (
-	"errors"
-	"flag"
-	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
+        "errors"
+        "flag"
+        "fmt"
+        "io/ioutil"
+        "log"
+        "os"
+        "runtime"
+        "strconv"
+        "strings"
 
-	"github.com/mholt/caddy/caddy"
-	"github.com/mholt/caddy/caddy/letsencrypt"
+        "github.com/mholt/caddy/caddy"
+        "github.com/mholt/caddy/caddy/letsencrypt"
 )
 
 var (
-	conf    string
-	cpu     string
-	version bool
-	revoke  string
-	logfile string
+        conf    string
+        cpu     string
+        pidfile string
+        version bool
+        revoke  string
+        logfile string
 )
 
 const (
-	appName    = "Caddy"
-	appVersion = "0.8 beta 3"
+        appName    = "Caddy"
+        appVersion = "0.8 beta"
 )
 
 func init() {
-	flag.StringVar(&conf, "conf", "", "Configuration file to use (default="+caddy.DefaultConfigFile+")")
-	flag.BoolVar(&caddy.HTTP2, "http2", true, "HTTP/2 support") // TODO: temporary flag until http2 merged into std lib
-	flag.BoolVar(&caddy.Quiet, "quiet", false, "Quiet mode (no initialization output)")
-	flag.StringVar(&cpu, "cpu", "100%", "CPU cap")
-	flag.StringVar(&caddy.Root, "root", caddy.DefaultRoot, "Root path to default site")
-	flag.StringVar(&caddy.Host, "host", caddy.DefaultHost, "Default host")
-	flag.StringVar(&caddy.Port, "port", caddy.DefaultPort, "Default port")
-	flag.BoolVar(&version, "version", false, "Show version")
-	// TODO: Boulder dev URL is: http://192.168.99.100:4000
-	// TODO: Staging API URL is: https://acme-staging.api.letsencrypt.org
-	// TODO: Production endpoint is: https://acme-v01.api.letsencrypt.org
-	flag.StringVar(&letsencrypt.CAUrl, "ca", "https://acme-staging.api.letsencrypt.org", "Certificate authority ACME server")
-	flag.BoolVar(&letsencrypt.Agreed, "agree", false, "Agree to Let's Encrypt Subscriber Agreement")
-	flag.StringVar(&letsencrypt.DefaultEmail, "email", "", "Default Let's Encrypt account email address")
-	flag.StringVar(&revoke, "revoke", "", "Hostname for which to revoke the certificate")
-	flag.StringVar(&logfile, "log", "", "Process log file")
+        flag.StringVar(&conf, "conf", "", "Configuration file to use (default="+caddy.DefaultConfigFile+")")
+        flag.BoolVar(&caddy.HTTP2, "http2", true, "HTTP/2 support") // TODO: temporary flag until http2 merged into std lib
+        flag.BoolVar(&caddy.Quiet, "quiet", false, "Quiet mode (no initialization output)")
+        flag.StringVar(&cpu, "cpu", "100%", "CPU cap")
+        flag.StringVar(&pidfile, "pidfile", "", "Path to write pid file")
+        flag.StringVar(&caddy.Root, "root", caddy.DefaultRoot, "Root path to default site")
+        flag.StringVar(&caddy.Host, "host", caddy.DefaultHost, "Default host")
+        flag.StringVar(&caddy.Port, "port", caddy.DefaultPort, "Default port")
+        flag.BoolVar(&version, "version", false, "Show version")
+        // TODO: Boulder dev URL is: http://192.168.99.100:4000
+        // TODO: Staging API URL is: https://acme-staging.api.letsencrypt.org
+        // TODO: Production endpoint is: https://acme-v01.api.letsencrypt.org
+        flag.StringVar(&letsencrypt.CAUrl, "ca", "https://acme-staging.api.letsencrypt.org", "Certificate authority ACME server")
+        flag.BoolVar(&letsencrypt.Agreed, "agree", false, "Agree to Let's Encrypt Subscriber Agreement")
+        flag.StringVar(&letsencrypt.DefaultEmail, "email", "", "Default Let's Encrypt account email address")
+        flag.StringVar(&revoke, "revoke", "", "Hostname for which to revoke the certificate")
+        flag.StringVar(&logfile, "log", "", "Process log file")
 }
 
 func main() {
-	flag.Parse() // called here in main() to allow other packages to set flags in their inits
+        flag.Parse() // called here in main() to allow other packages to set flags in their inits
 
-	caddy.AppName = appName
-	caddy.AppVersion = appVersion
+        caddy.AppName = appName
+        caddy.AppVersion = appVersion
 
-	// set up process log before anything bad happens
-	switch logfile {
-	case "stdout":
-		log.SetOutput(os.Stdout)
-	case "stderr":
-		log.SetOutput(os.Stderr)
-	case "":
-		log.SetOutput(ioutil.Discard)
-	default:
-		file, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
-		if err != nil {
-			log.Fatalf("Error opening log file: %v", err)
-		}
-		log.SetOutput(file)
-	}
+        // set up process log before anything bad happens
+        switch logfile {
+        case "stdout":
+                log.SetOutput(os.Stdout)
+        case "stderr":
+                log.SetOutput(os.Stderr)
+        case "":
+                log.SetOutput(ioutil.Discard)
+        default:
+                file, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+                if err != nil {
+                        log.Fatalf("Error opening log file: %v", err)
+                }
+                log.SetOutput(file)
+        }
 
-	if version {
-		fmt.Printf("%s %s\n", caddy.AppName, caddy.AppVersion)
-		os.Exit(0)
-	}
-	if revoke != "" {
-		err := letsencrypt.Revoke(revoke)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("Revoked certificate for %s\n", revoke)
-		os.Exit(0)
-	}
+        if version {
+                fmt.Printf("%s %s\n", caddy.AppName, caddy.AppVersion)
+                os.Exit(0)
+        }
+        if revoke != "" {
+                err := letsencrypt.Revoke(revoke)
+                if err != nil {
+                        log.Fatal(err)
+                }
+                fmt.Printf("Revoked certificate for %s\n", revoke)
+                os.Exit(0)
+        }
+        if pidfile != "" {
+                pid := []byte(strconv.Itoa(os.Getpid()) + "\n")
+                err := ioutil.WriteFile(pidfile, pid, 0644)
+                if err != nil {
+                        log.Fatal(err)
+                }
+        }
 
 	// Set CPU cap
 	err := setCPU(cpu)
